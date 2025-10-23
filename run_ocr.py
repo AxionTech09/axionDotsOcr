@@ -3,16 +3,13 @@ from dots_ocr.parser import DotsOCRParser
 
 def process_file(file_path):
     ocr = DotsOCRParser()
-
     results = []
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(output_dir, exist_ok=True)
 
-    # ✅ Use a valid prompt_mode based on your version
-    prompt_mode = "prompt_kv"   # for key-value fields (DL, RC, invoices)
-    # prompt_mode = "prompt_ocr"   # for plain text extraction
-    # prompt_mode = "prompt_table" # for invoice tables
+    # ✅ use the valid prompt from your build
+    prompt_mode = "prompt_layout_all_en"
 
     if file_path.lower().endswith(".pdf"):
         print(f"Processing PDF: {file_path}")
@@ -37,7 +34,7 @@ def process_file(file_path):
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
-    print(f"\n✅ OCR completed successfully!")
+    print("\n✅ OCR completed successfully!")
     print(f"📄 Output saved to: {output_path}\n")
 
 
