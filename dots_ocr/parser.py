@@ -27,7 +27,7 @@ class DotsOCRParser:
                  min_pixels=None,
                  max_pixels=None,
                  use_hf=True,
-                 model_path="./weights/DotsOCR"):
+                 model_path=".rednote-hilab/dots-ocr-base"):
         self.dpi = dpi
         self.output_dir = output_dir
         self.min_pixels = min_pixels

@@ -1050,7 +1050,7 @@ from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 from qwen_vl_utils import process_vision_info
 from dots_ocr.utils import dict_promptmode_to_prompt
 
-model_path = "./weights/DotsOCR"
+model_path = "rednote-hilab/dots-ocr-base"
 model = AutoModelForCausalLM.from_pretrained(
     model_path,
     attn_implementation="flash_attention_2",
