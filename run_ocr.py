@@ -1,13 +1,13 @@
 import sys, os, json
 from pdf2image import convert_from_path
 
-# ✅ Correct import for your version
+# ✅ Correct import for your repo version
 from dots_ocr.parser import DotsOCRParser
 
 
 def process_file(file_path):
-    # Initialize OCR parser
-    ocr = DotsOCRParser(device="cpu")
+    # Initialize OCR parser (no device arg)
+    ocr = DotsOCRParser()
 
     results = []
     if file_path.lower().endswith(".pdf"):
@@ -17,15 +17,14 @@ def process_file(file_path):
             temp_img = f"page_{i+1}.png"
             page.save(temp_img, "PNG")
             print(f"Running OCR on page {i+1}...")
-            res = ocr.parse(temp_img)  # ← main parse function
+            res = ocr.parse(temp_img)
             results.append({"page": i + 1, "result": res})
             os.remove(temp_img)
     else:
         print("Processing single image...")
-        res = ocr.parse(file_path)   # ← main parse function
+        res = ocr.parse(file_path)
         results.append({"page": 1, "result": res})
 
-    # Pretty-print JSON output
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
 
