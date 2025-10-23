@@ -1,5 +1,4 @@
 import sys, os, json
-from pdf2image import convert_from_path
 from dots_ocr.parser import DotsOCRParser
 
 def process_file(file_path):
@@ -10,34 +9,37 @@ def process_file(file_path):
     output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(output_dir, exist_ok=True)
 
+    # ✅ Use a valid prompt_mode based on your version
+    prompt_mode = "prompt_kv"   # for key-value fields (DL, RC, invoices)
+    # prompt_mode = "prompt_ocr"   # for plain text extraction
+    # prompt_mode = "prompt_table" # for invoice tables
+
     if file_path.lower().endswith(".pdf"):
         print(f"Processing PDF: {file_path}")
-        # The parser has a built-in parse_pdf method
         res = ocr.parse_pdf(
             input_path=file_path,
             filename=base_name,
-            prompt_mode="ocr",
+            prompt_mode=prompt_mode,
             save_dir=output_dir
         )
         results.append({"file": base_name, "result": res})
     else:
         print(f"Processing image: {file_path}")
-        # Use parse_image for single images
         res = ocr.parse_image(
             input_path=file_path,
             filename=base_name,
-            prompt_mode="ocr",
+            prompt_mode=prompt_mode,
             save_dir=output_dir
         )
         results.append({"file": base_name, "result": res})
 
-    # Save JSON output
     output_path = os.path.join(output_dir, f"{base_name}.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
     print(f"\n✅ OCR completed successfully!")
     print(f"📄 Output saved to: {output_path}\n")
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
