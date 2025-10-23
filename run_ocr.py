@@ -1,9 +1,10 @@
 from dotsocr import DotsOCR
+from dots_ocr.parser import DotsOCRParser
 from pdf2image import convert_from_path
 import sys, os, json
 
 def process_file(file_path):
-    ocr = DotsOCR(model_name="dots-ocr-small", device="cpu")  # Load model on CPU
+    ocr = DotsOCR(device="cpu")  # Load model on CPU
 
     results = []
     if file_path.lower().endswith(".pdf"):
