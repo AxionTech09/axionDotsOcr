@@ -4,10 +4,16 @@ import shutil
 import os
 from PIL import Image
 
-# Import the OCR function from the repo
-from dots_ocr.model.inference import inference_with_vllm
+# Try PaddleOCR first; fallback to pytesseract if needed
+try:
+    from paddleocr import PaddleOCR
+    ocr_engine = PaddleOCR(use_angle_cls=True, lang='en')
+    use_paddle = True
+except ImportError:
+    import pytesseract
+    use_paddle = False
 
-app = FastAPI(title="DOTS OCR API", description="OCR Extraction for Vehicle Insurance Documents", version="1.0")
+app = FastAPI(title="DOTS OCR CPU API", description="CPU-based OCR extraction (no vLLM required)", version="1.0")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -15,37 +21,30 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.get("/")
 def root():
-    return {"message": "DOTS OCR API is running"}
+    return {"message": "DOTS OCR CPU-based API is running"}
 
 
 @app.post("/api/ocr")
 async def extract_text(file: UploadFile = File(...)):
     try:
-        # Save the uploaded file temporarily
+        # Save uploaded file
         file_path = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Open image using Pillow
+        # Open image
         image = Image.open(file_path)
 
-        # Simple OCR prompt for extraction
-        prompt = "Extract all text content clearly from the image."
+        # OCR Processing
+        if use_paddle:
+            result = ocr_engine.ocr(file_path, cls=True)
+            text_blocks = [line[1][0] for block in result for line in block]
+        else:
+            text_blocks = pytesseract.image_to_string(image).splitlines()
 
-        # Call the inference function
-        result = inference_with_vllm(
-            image=image,
-            prompt=prompt,
-            protocol="http",
-            ip="localhost",
-            port=8000,
-            model_name="rednote-hilab/dots.ocr"
-        )
+        extracted_text = "\n".join([t for t in text_blocks if t.strip()])
 
-        if not result:
-            return JSONResponse(content={"status": "error", "message": "OCR failed or returned empty."}, status_code=500)
-
-        return JSONResponse(content={"status": "success", "data": result})
+        return JSONResponse(content={"status": "success", "data": extracted_text})
 
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
