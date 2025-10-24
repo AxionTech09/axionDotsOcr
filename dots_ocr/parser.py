@@ -51,9 +51,27 @@ class DotsOCRParser:
         
         hf_token = get_hf_token()
 
-        print("🔹 Loading model from:", self.model_path)
+        # print("🔹 Loading model from:", self.model_path)
         device = "cpu"  # ✅ CPU-only
+        
+        def _load_hf_model(self):
+        
+        model_path = "/var/www/dots_ocr/dots_ocr/local_model"  # your downloaded folder
 
+        print("🔹 Loading model from local path:", model_path)
+
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.float32,
+            device_map={"": "cpu"}
+        )
+
+        self.processor = AutoProcessor.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            use_fast=True
+        )
         # self.model = AutoModelForCausalLM.from_pretrained(
         #     "rednote-hilab/dots.ocr",
         #     token=hf_token,
@@ -67,19 +85,7 @@ class DotsOCRParser:
         #     trust_remote_code=True,
         #     use_fast=True
         # )
-        model_path = os.path.join(os.path.dirname(__file__), "local_model")
-
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=torch.float32,
-            device_map={"": "cpu"},
-            trust_remote_code=True
-        )
-        self.processor = AutoProcessor.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            use_fast=True
-        )
+       
         self.process_vision_info = process_vision_info
 
         print("✅ Model loaded successfully on CPU.")
