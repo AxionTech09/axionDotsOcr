@@ -10,6 +10,7 @@ from dots_ocr.utils.doc_utils import load_images_from_pdf
 from dots_ocr.utils.prompts import dict_promptmode_to_prompt
 from dots_ocr.utils.layout_utils import post_process_output, draw_layout_on_image, pre_process_bboxes
 from dots_ocr.utils.format_transformer import layoutjson2md
+from dots_ocr.utils.cpu_optimizer import CPUOptimizer, configure_cpu_inference
 from qwen_vl_utils import process_vision_info  # ✅ fixed import
 
 
@@ -26,6 +27,11 @@ class DotsOCRParser:
                  max_pixels=None,
                  use_hf=True,
                  model_path="/var/www/dots_ocr/dots_ocr/local_model"):
+        
+        # Configure CPU environment first
+        print("⚙️  Initializing dots.OCR in CPU mode (Hugging Face backend)...")
+        configure_cpu_inference()
+        
         self.dpi = dpi
         self.output_dir = output_dir
         self.min_pixels = min_pixels
@@ -33,7 +39,6 @@ class DotsOCRParser:
         self.model_path = model_path
         self.use_hf = use_hf
 
-        print("⚙️  Initializing dots.OCR in CPU mode (Hugging Face backend)...")
         self._load_hf_model()
 
         assert self.min_pixels is None or self.min_pixels >= MIN_PIXELS
@@ -45,30 +50,64 @@ class DotsOCRParser:
 
         print("🔹 Loading model from local path:", self.model_path)
 
-        # ✅ Force float32 globally to avoid BF16 issues
-        torch.set_default_dtype(torch.float32)
+        try:
+            # ✅ Load model with CPU-optimized settings
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.float32,  # Force float32 for CPU compatibility
+                device_map="cpu",           # Explicit CPU mapping
+                low_cpu_mem_usage=True,     # Optimize for CPU memory
+                use_safetensors=True,       # Use safetensors for better loading
+            )
 
-        # ✅ Load model fully on CPU in float32
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_path,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,  # ensure float32 precision
-            device_map="cpu"            # load entirely on CPU
-        )
+            # ✅ Apply CPU optimizations
+            self.model = CPUOptimizer.optimize_model_for_cpu(self.model)
 
-        # ✅ Convert all tensors to float32 just in case
-        self.model = self.model.to(torch.float32)
+            # ✅ Load processor
+            self.processor = AutoProcessor.from_pretrained(
+                self.model_path,
+                trust_remote_code=True
+            )
 
-        # ✅ Load processor
-        self.processor = AutoProcessor.from_pretrained(
-            self.model_path,
-            trust_remote_code=True
-        )
-
-        print("✅ Model successfully loaded in float32 (CPU mode)")
+            print("✅ Model successfully loaded and optimized for CPU")
+            print(f"   Model device: {next(self.model.parameters()).device}")
+            print(f"   Model dtype: {next(self.model.parameters()).dtype}")
+            
+            # Show memory usage
+            memory_info = CPUOptimizer.get_memory_info()
+            print(f"💾 Memory usage: {memory_info['cpu_memory_used_gb']:.1f}GB / {memory_info['cpu_memory_total_gb']:.1f}GB")
+            
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            print("🔧 Attempting fallback loading method...")
+            
+            # Fallback method with more aggressive CPU settings
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.float32,
+                device_map={"": "cpu"},     # Force all layers to CPU
+                low_cpu_mem_usage=True,
+                use_safetensors=False,      # Try without safetensors
+            )
+            
+            # Force float32 conversion
+            self.model = self.model.float().eval().cpu()
+            CPUOptimizer._convert_model_dtype(self.model, torch.float32)
+            
+            self.processor = AutoProcessor.from_pretrained(
+                self.model_path,
+                trust_remote_code=True
+            )
+            
+            print("✅ Model loaded using fallback method")
 
     def _inference_with_hf(self, image, prompt):
         import torch
+        
+        # Ensure we're using float32 throughout
+        torch.set_default_dtype(torch.float32)
 
         # Prepare message for multimodal model
         messages = [
@@ -84,10 +123,10 @@ class DotsOCRParser:
         # Convert to chat template text
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-        # ✅ Process image inputs
+        # ✅ Process image inputs with proper CPU handling
         image_inputs, video_inputs = process_vision_info(messages)
 
-        # ✅ Prepare model inputs
+        # ✅ Prepare model inputs with explicit CPU dtype handling
         inputs = self.processor(
             text=[text],
             images=image_inputs,
@@ -96,29 +135,83 @@ class DotsOCRParser:
             return_tensors="pt"
         )
 
-        # ✅ Ensure inputs are float32 for CPU
-        for key in inputs:
-            if isinstance(inputs[key], torch.Tensor):
-                if key == "input_ids":
-                    inputs[key] = inputs[key].to(dtype=torch.long)
-                else:
-                    inputs[key] = inputs[key].to(dtype=torch.float32)
+        # ✅ Use CPU optimizer to prepare inputs
+        inputs_cpu = CPUOptimizer.prepare_inputs_for_cpu(inputs)
 
-        inputs = inputs.to("cpu")
-
-        # ✅ Inference
+        # ✅ CPU inference with memory optimization
         with torch.no_grad():
-            generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            response = self.processor.batch_decode(
-                generated_ids_trimmed,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False
-            )[0]
+            # Force model to be in float32 before generation
+            self.model = self.model.float()
+            
+            try:
+                generated_ids = self.model.generate(
+                    **inputs_cpu, 
+                    max_new_tokens=2048,
+                    do_sample=False,  # Deterministic generation for CPU
+                    temperature=None,  # Disable temperature for greedy decode
+                    top_p=None,       # Disable top_p for greedy decode
+                    pad_token_id=self.processor.tokenizer.eos_token_id
+                )
+                
+                generated_ids_trimmed = [
+                    out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs_cpu["input_ids"], generated_ids)
+                ]
+                
+                response = self.processor.batch_decode(
+                    generated_ids_trimmed,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False
+                )[0]
+                
+            except RuntimeError as e:
+                if "BFloat16" in str(e) or "bias type" in str(e):
+                    print("⚠️  Detected dtype mismatch. Attempting model conversion...")
+                    # Force convert all model parameters to consistent dtype
+                    self._fix_model_dtypes()
+                    # Retry inference
+                    generated_ids = self.model.generate(
+                        **inputs_cpu, 
+                        max_new_tokens=2048,
+                        do_sample=False,
+                        pad_token_id=self.processor.tokenizer.eos_token_id
+                    )
+                    
+                    generated_ids_trimmed = [
+                        out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs_cpu["input_ids"], generated_ids)
+                    ]
+                    
+                    response = self.processor.batch_decode(
+                        generated_ids_trimmed,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=False
+                    )[0]
+                else:
+                    raise e
 
         return response
+
+    def _fix_model_dtypes(self):
+        """Fix model dtype inconsistencies for CPU inference."""
+        import torch
+        print("🔧 Converting all model parameters to float32...")
+        
+        # Recursively convert all parameters and buffers to float32
+        def convert_to_float32(module):
+            for child in module.children():
+                convert_to_float32(child)
+            
+            # Convert parameters
+            for param_name, param in module.named_parameters(recurse=False):
+                if param.dtype != torch.float32:
+                    param.data = param.data.to(torch.float32)
+            
+            # Convert buffers
+            for buffer_name, buffer in module.named_buffers(recurse=False):
+                if buffer.dtype != torch.float32 and buffer.dtype not in [torch.long, torch.int, torch.bool]:
+                    buffer.data = buffer.data.to(torch.float32)
+        
+        convert_to_float32(self.model)
+        print("✅ Model dtype conversion completed")
 
     def get_prompt(self, prompt_mode, bbox=None, origin_image=None, image=None, min_pixels=None, max_pixels=None):
         prompt = dict_promptmode_to_prompt[prompt_mode]

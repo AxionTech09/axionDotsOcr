@@ -10,3 +10,4 @@ modelscope
 #flash-attn==2.8.0.post2
 accelerate
 python-dotenv  # For better .env file handling
+psutil  # For memory monitoring and CPU optimization
