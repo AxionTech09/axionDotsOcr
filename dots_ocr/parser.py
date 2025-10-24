@@ -42,34 +42,34 @@ class DotsOCRParser:
         assert self.max_pixels is None or self.max_pixels <= MAX_PIXELS
 
     def _load_hf_model(self):
-    import os
-    import torch
-    from transformers import AutoModelForCausalLM, AutoProcessor
-    from qwen_vl_utils import process_vision_info
-    from .utils.env_config import get_hf_token
+        import os
+        import torch
+        from transformers import AutoModelForCausalLM, AutoProcessor
+        from qwen_vl_utils import process_vision_info
+        from .utils.env_config import get_hf_token
 
-    # Get Hugging Face token from .env or environment variable
-    hf_token = get_hf_token()
+        # Get Hugging Face token from .env or environment variable
+        hf_token = get_hf_token()
 
-    device = "cpu"  # ✅ Run on CPU
-    model_path = "/var/www/dots_ocr/dots_ocr/local_model"  # ✅ Local model folder
+        device = "cpu"  # ✅ Run on CPU
+        model_path = "/var/www/dots_ocr/dots_ocr/local_model"  # ✅ Local model folder
 
-    print("🔹 Loading model from local path:", model_path)
+        print("🔹 Loading model from local path:", model_path)
 
-    # Load model
-    self.model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        trust_remote_code=True,
-        torch_dtype=torch.float32,
-        device_map={"": "cpu"},
-    )
+        # Load model
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.float32,
+            device_map={"": "cpu"},
+        )
 
-    # Load processor
-    self.processor = AutoProcessor.from_pretrained(
-        model_path,
-        trust_remote_code=True,
-        use_fast=True,
-    )
+        # Load processor
+        self.processor = AutoProcessor.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            use_fast=True,
+        )
         # self.model = AutoModelForCausalLM.from_pretrained(
         #     "rednote-hilab/dots.ocr",
         #     token=hf_token,
