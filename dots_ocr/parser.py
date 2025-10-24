@@ -4,9 +4,6 @@ from tqdm import tqdm
 from multiprocessing.pool import ThreadPool
 import argparse
 
-# Removed vllm dependency for CPU-only
-# from dots_ocr.model.inference import inference_with_vllm
-
 from dots_ocr.utils.consts import image_extensions, MIN_PIXELS, MAX_PIXELS
 from dots_ocr.utils.image_utils import get_image_by_fitz_doc, fetch_image, smart_resize
 from dots_ocr.utils.doc_utils import load_images_from_pdf
@@ -33,8 +30,8 @@ class DotsOCRParser:
         self.min_pixels = min_pixels
         self.max_pixels = max_pixels
         self.model_path = model_path
+        self.use_hf = use_hf
 
-        self.use_hf = True
         print("⚙️  Initializing dots.OCR in CPU mode (Hugging Face backend)...")
         self._load_hf_model()
 
@@ -42,12 +39,9 @@ class DotsOCRParser:
         assert self.max_pixels is None or self.max_pixels <= MAX_PIXELS
 
     def _load_hf_model(self):
-        import os
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
-
-        hf_token = os.environ.get("HF_TOKEN")
 
         model_path = "/var/www/dots_ocr/dots_ocr/local_model"
         print("🔹 Loading model from local path:", model_path)
@@ -60,19 +54,18 @@ class DotsOCRParser:
             device_map={"": "cpu"}
         )
 
-        # ✅ Convert every single submodule and tensor to float32
-        for name, module in self.model.named_modules():
+        # ✅ Convert all submodules, params, and buffers to float32
+        for module in self.model.modules():
             try:
                 module.float()
             except Exception:
                 pass
 
-        # ✅ Convert all parameters & buffers manually (in case of leftover BF16)
         for param in self.model.parameters():
             if param.dtype != torch.float32:
                 param.data = param.data.float()
 
-        for buffer_name, buffer in self.model.named_buffers():
+        for _, buffer in self.model.named_buffers():
             if buffer.dtype != torch.float32:
                 buffer.data = buffer.data.float()
 
@@ -82,46 +75,14 @@ class DotsOCRParser:
             trust_remote_code=True,
             use_fast=True
         )
-
         self.process_vision_info = process_vision_info
+
         print("✅ Model fully converted to float32 and loaded successfully on CPU.")
-
-    # def _inference_with_hf(self, image, prompt):
-    #     import torch
-    #     messages = [
-    #         {
-    #             "role": "user",
-    #             "content": [
-    #                 {"type": "image", "image": image},
-    #                 {"type": "text", "text": prompt}
-    #             ]
-    #         }
-    #     ]
-    #     text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    #     image_inputs, video_inputs = self.process_vision_info(messages)
-    #     inputs = self.processor(
-    #         text=[text],
-    #         images=image_inputs,
-    #         videos=video_inputs,
-    #         padding=True,             
-    #         return_tensors="pt",
-    #     )
-    #     inputs = inputs.to("cpu")
-
-    #     with torch.no_grad():
-    #         generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
-    #         generated_ids_trimmed = [
-    #             out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-    #         ]
-    #         response = self.processor.batch_decode(
-    #             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-    #         )[0]
-
-    #     return response
 
     def _inference_with_hf(self, image, prompt):
         import torch
 
+        # Prepare chat-based message input
         messages = [
             {
                 "role": "user",
@@ -132,11 +93,10 @@ class DotsOCRParser:
             }
         ]
 
-        # Convert the prompt into text tokens
-        text = self.processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        # Tokenize + prepare model inputs
+        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         image_inputs, video_inputs = self.process_vision_info(messages)
+
         inputs = self.processor(
             text=[text],
             images=image_inputs,
@@ -145,7 +105,7 @@ class DotsOCRParser:
             return_tensors="pt",
         )
 
-        # ✅ Fix types: input_ids → long, pixel tensors → float32
+        # ✅ Normalize datatypes for CPU inference
         for key in inputs:
             if isinstance(inputs[key], torch.Tensor):
                 if key == "input_ids":
@@ -153,10 +113,9 @@ class DotsOCRParser:
                 else:
                     inputs[key] = inputs[key].to(dtype=torch.float32)
 
-        # Move everything to CPU
         inputs = inputs.to("cpu")
 
-        # Run inference (generation)
+        # ✅ Run model generation safely
         with torch.no_grad():
             generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
             generated_ids_trimmed = [
@@ -202,12 +161,9 @@ class DotsOCRParser:
         input_height, input_width = smart_resize(image.height, image.width)
         prompt = self.get_prompt(prompt_mode, bbox, origin_image, image, min_pixels=min_pixels, max_pixels=max_pixels)
 
-        # ✅ Always use Hugging Face backend
         response = self._inference_with_hf(image, prompt)
 
-        result = {'page_no': page_idx,
-                  "input_height": input_height,
-                  "input_width": input_width}
+        result = {'page_no': page_idx, "input_height": input_height, "input_width": input_width}
 
         if source == 'pdf':
             save_name = f"{save_name}_page_{page_idx}"
@@ -266,7 +222,7 @@ class DotsOCRParser:
         def _execute_task(task_args):
             return self._parse_single_image(**task_args)
 
-        num_thread = 1  # CPU mode = single-thread
+        num_thread = 1
         print(f"Parsing PDF with {total_pages} pages on CPU...")
 
         results = []
