@@ -42,6 +42,8 @@ class DotsOCRParser:
         assert self.max_pixels is None or self.max_pixels <= MAX_PIXELS
 
     def _load_hf_model(self):
+        import os
+        os.environ["HF_TOKEN"] = "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"
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
@@ -50,12 +52,18 @@ class DotsOCRParser:
         device = "cpu"  # ✅ CPU-only
 
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_path,
+            "rednote-hilab/dots-ocr-base",
+            token=os.environ.get("HF_TOKEN"),
             torch_dtype=torch.float32,
-            device_map={"": device},
+            device_map={"": "cpu"},
             trust_remote_code=True
         )
-        self.processor = AutoProcessor.from_pretrained(self.model_path, trust_remote_code=True, use_fast=True)
+        self.processor = AutoProcessor.from_pretrained(
+            "rednote-hilab/dots-ocr-base",
+            token=os.environ.get("HF_TOKEN"),
+            trust_remote_code=True,
+            use_fast=True
+        )
         self.process_vision_info = process_vision_info
 
         print("✅ Model loaded successfully on CPU.")
