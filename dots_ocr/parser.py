@@ -10,6 +10,7 @@ from dots_ocr.utils.doc_utils import load_images_from_pdf
 from dots_ocr.utils.prompts import dict_promptmode_to_prompt
 from dots_ocr.utils.layout_utils import post_process_output, draw_layout_on_image, pre_process_bboxes
 from dots_ocr.utils.format_transformer import layoutjson2md
+from qwen_vl_utils import process_vision_info  # ✅ fixed import
 
 
 class DotsOCRParser:
@@ -17,6 +18,7 @@ class DotsOCRParser:
     CPU-only version of DotsOCR parser.
     Runs on Hugging Face transformer backend (no vLLM server required).
     """
+
     def __init__(self,
                  dpi=200,
                  output_dir="./output",
@@ -40,11 +42,10 @@ class DotsOCRParser:
     def _load_hf_model(self):
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
-        from qwen_vl_utils import process_vision_info
 
         print("🔹 Loading model from local path:", self.model_path)
 
-        # ✅ Force all ops to run in float32 (avoid bfloat16 issues)
+        # ✅ Force float32 globally to avoid BF16 issues
         torch.set_default_dtype(torch.float32)
 
         # ✅ Load model fully on CPU in float32
@@ -52,13 +53,13 @@ class DotsOCRParser:
             self.model_path,
             trust_remote_code=True,
             torch_dtype=torch.float32,  # ensure float32 precision
-            device_map="cpu"            # load on CPU
+            device_map="cpu"            # load entirely on CPU
         )
 
-        # ✅ Ensure model tensors are float32 (some submodules may still be bf16)
+        # ✅ Convert all tensors to float32 just in case
         self.model = self.model.to(torch.float32)
 
-        # ✅ Load processor as usual
+        # ✅ Load processor
         self.processor = AutoProcessor.from_pretrained(
             self.model_path,
             trust_remote_code=True
@@ -69,7 +70,7 @@ class DotsOCRParser:
     def _inference_with_hf(self, image, prompt):
         import torch
 
-        # Prepare chat-based message input
+        # Prepare message for multimodal model
         messages = [
             {
                 "role": "user",
@@ -80,20 +81,22 @@ class DotsOCRParser:
             }
         ]
 
-        # Tokenize + prepare model inputs
+        # Convert to chat template text
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        # image_inputs, video_inputs = self.process_vision_info(messages)
+
+        # ✅ Process image inputs
         image_inputs, video_inputs = process_vision_info(messages)
-        
+
+        # ✅ Prepare model inputs
         inputs = self.processor(
             text=[text],
             images=image_inputs,
             videos=video_inputs,
             padding=True,
-            return_tensors="pt",
+            return_tensors="pt"
         )
 
-        # ✅ Normalize datatypes for CPU inference
+        # ✅ Ensure inputs are float32 for CPU
         for key in inputs:
             if isinstance(inputs[key], torch.Tensor):
                 if key == "input_ids":
@@ -103,14 +106,16 @@ class DotsOCRParser:
 
         inputs = inputs.to("cpu")
 
-        # ✅ Run model generation safely
+        # ✅ Inference
         with torch.no_grad():
             generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
             generated_ids_trimmed = [
                 out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
             ]
             response = self.processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                generated_ids_trimmed,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False
             )[0]
 
         return response
@@ -120,9 +125,11 @@ class DotsOCRParser:
         if prompt_mode == 'prompt_grounding_ocr':
             assert bbox is not None
             bboxes = [bbox]
-            bbox = pre_process_bboxes(origin_image, bboxes,
-                                      input_width=image.width, input_height=image.height,
-                                      min_pixels=min_pixels, max_pixels=max_pixels)[0]
+            bbox = pre_process_bboxes(
+                origin_image, bboxes,
+                input_width=image.width, input_height=image.height,
+                min_pixels=min_pixels, max_pixels=max_pixels
+            )[0]
             prompt = prompt + str(bbox)
         return prompt
 
