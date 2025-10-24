@@ -140,7 +140,14 @@ class DotsOCRParser:
             padding=True,
             return_tensors="pt",
         )
-        inputs_cpu = CPUOptimizer.prepare_inputs_for_cpu(inputs)
+        
+        # ✅ Convert ALL input tensors to float32 to match model dtype
+        inputs_cpu = {}
+        for key, value in inputs.items():
+            if isinstance(value, torch.Tensor):
+                inputs_cpu[key] = value.float()  # Convert to float32
+            else:
+                inputs_cpu[key] = value
 
         with torch.no_grad():
             self.model = self.model.float()
@@ -158,6 +165,12 @@ class DotsOCRParser:
                 if "BFloat16" in str(e) or "bias type" in str(e):
                     print("⚠️  Detected dtype mismatch. Attempting model conversion...")
                     self._fix_model_dtypes()
+                    
+                    # ✅ Re-convert inputs after model fix
+                    for key, value in inputs_cpu.items():
+                        if isinstance(value, torch.Tensor):
+                            inputs_cpu[key] = value.float()
+                    
                     generated_ids = self.model.generate(
                         **inputs_cpu,
                         max_new_tokens=2048,
