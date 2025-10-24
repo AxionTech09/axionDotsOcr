@@ -88,38 +88,80 @@ class DotsOCRParser:
 
         print("✅ Model loaded successfully on CPU.")
 
+    # def _inference_with_hf(self, image, prompt):
+    #     import torch
+    #     messages = [
+    #         {
+    #             "role": "user",
+    #             "content": [
+    #                 {"type": "image", "image": image},
+    #                 {"type": "text", "text": prompt}
+    #             ]
+    #         }
+    #     ]
+    #     text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    #     image_inputs, video_inputs = self.process_vision_info(messages)
+    #     inputs = self.processor(
+    #         text=[text],
+    #         images=image_inputs,
+    #         videos=video_inputs,
+    #         padding=True,
+    #         return_tensors="pt",
+    #     )
+    #     inputs = inputs.to("cpu")
+
+    #     with torch.no_grad():
+    #         generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
+    #         generated_ids_trimmed = [
+    #             out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+    #         ]
+    #         response = self.processor.batch_decode(
+    #             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+    #         )[0]
+
+    #     return response
+
     def _inference_with_hf(self, image, prompt):
-        import torch
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": prompt}
-                ]
-            }
-        ]
-        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        image_inputs, video_inputs = self.process_vision_info(messages)
-        inputs = self.processor(
-            text=[text],
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt",
-        )
-        inputs = inputs.to("cpu")
-
-        with torch.no_grad():
-            generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": prompt}
             ]
-            response = self.processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )[0]
+        }
+    ]
 
-        return response
+    text = self.processor.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
+    image_inputs, video_inputs = self.process_vision_info(messages)
+    inputs = self.processor(
+        text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors="pt",
+    )
+
+    # ✅ Force all tensors to float32 (for CPU)
+    for key in inputs:
+        if isinstance(inputs[key], torch.Tensor):
+            inputs[key] = inputs[key].to(dtype=torch.float32)
+
+    inputs = inputs.to("cpu")
+
+    # ✅ Inference (no bfloat16 usage)
+    with torch.no_grad():
+        generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        response = self.processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
+
+    return response
 
     def get_prompt(self, prompt_mode, bbox=None, origin_image=None, image=None, min_pixels=None, max_pixels=None):
         prompt = dict_promptmode_to_prompt[prompt_mode]
