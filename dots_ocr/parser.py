@@ -47,6 +47,9 @@ class DotsOCRParser:
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
+        from .utils.env_config import get_hf_token
+        
+        hf_token = get_hf_token()
 
         print("🔹 Loading model from:", self.model_path)
         device = "cpu"  # ✅ CPU-only

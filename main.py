@@ -4,6 +4,10 @@ import shutil
 import os
 from PIL import Image
 
+# Load environment configuration
+from dots_ocr.utils.env_config import setup_environment
+setup_environment()
+
 # Try PaddleOCR first; fallback to pytesseract if needed
 try:
     from paddleocr import PaddleOCR
