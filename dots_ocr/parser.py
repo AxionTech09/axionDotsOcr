@@ -44,6 +44,7 @@ class DotsOCRParser:
     def _load_hf_model(self):
         import os
         hf_token = os.environ.get("HF_TOKEN")
+        def _load_hf_model(self):
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
@@ -53,8 +54,6 @@ class DotsOCRParser:
 
         # print("🔹 Loading model from:", self.model_path)
         device = "cpu"  # ✅ CPU-only
-        
-        def _load_hf_model(self):
         
         model_path = "/var/www/dots_ocr/dots_ocr/local_model"  # your downloaded folder
 
