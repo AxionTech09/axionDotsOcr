@@ -123,6 +123,7 @@ class DotsOCRParser:
 
     def _inference_with_hf(self, image, prompt):
         import torch
+
         messages = [
             {
                 "role": "user",
@@ -133,6 +134,7 @@ class DotsOCRParser:
             }
         ]
 
+        # Convert the prompt into text tokens
         text = self.processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
@@ -145,14 +147,18 @@ class DotsOCRParser:
             return_tensors="pt",
         )
 
-        # ✅ Force all tensors to float32 (for CPU)
+        # ✅ Fix types: input_ids → long, pixel tensors → float32
         for key in inputs:
             if isinstance(inputs[key], torch.Tensor):
-                inputs[key] = inputs[key].to(dtype=torch.float32)
+                if key == "input_ids":
+                    inputs[key] = inputs[key].to(dtype=torch.long)
+                else:
+                    inputs[key] = inputs[key].to(dtype=torch.float32)
 
+        # Move everything to CPU
         inputs = inputs.to("cpu")
 
-        # ✅ Inference (no bfloat16 usage)
+        # Run inference (generation)
         with torch.no_grad():
             generated_ids = self.model.generate(**inputs, max_new_tokens=2048)
             generated_ids_trimmed = [
