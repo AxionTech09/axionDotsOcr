@@ -27,7 +27,7 @@ class DotsOCRParser:
                  min_pixels=None,
                  max_pixels=None,
                  use_hf=True,
-                 model_path="rednote-hilab/dots-ocr-base"):
+                 model_path="rednote-hilab/dots.ocr"):
         self.dpi = dpi
         self.output_dir = output_dir
         self.min_pixels = min_pixels
@@ -55,14 +55,14 @@ class DotsOCRParser:
         device = "cpu"  # ✅ CPU-only
 
         self.model = AutoModelForCausalLM.from_pretrained(
-            "rednote-hilab/dots-ocr-base",
+            "rednote-hilab/dots.ocr",
             token=hf_token,
             torch_dtype=torch.float32,
             device_map={"": "cpu"},
             trust_remote_code=True
         )
         self.processor = AutoProcessor.from_pretrained(
-            "rednote-hilab/dots-ocr-base",
+            "rednote-hilab/dots.ocr",
             token=hf_token,
             trust_remote_code=True,
             use_fast=True

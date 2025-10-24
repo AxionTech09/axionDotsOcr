@@ -54,7 +54,7 @@ def inference(image_path, prompt, model, processor):
 
 if __name__ == "__main__":
     # We recommend enabling flash_attention_2 for better acceleration and memory saving, especially in multi-image and video scenarios.
-    model_path = "rednote-hilab/dots-ocr-base"
+    model_path = "rednote-hilab/dots.ocr"
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         attn_implementation="flash_attention_2",
