@@ -1,4 +1,7 @@
 import os
+import torch
+from transformers import AutoModelForCausalLM, AutoProcessor
+from qwen_vl_utils import process_vision_info
 import json
 from tqdm import tqdm
 from multiprocessing.pool import ThreadPool
@@ -38,9 +41,6 @@ class DotsOCRParser:
         assert self.max_pixels is None or self.max_pixels <= MAX_PIXELS
 
     def _load_hf_model(self):
-        import torch
-        from transformers import AutoModelForCausalLM, AutoProcessor
-        from qwen_vl_utils import process_vision_info
 
         print("🔹 Loading model from local path:", self.model_path)
 
@@ -84,7 +84,7 @@ class DotsOCRParser:
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         # image_inputs, video_inputs = self.process_vision_info(messages)
         image_inputs, video_inputs = process_vision_info(messages)
-        
+
         inputs = self.processor(
             text=[text],
             images=image_inputs,
