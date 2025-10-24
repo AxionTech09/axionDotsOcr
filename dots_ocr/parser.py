@@ -46,47 +46,30 @@ class DotsOCRParser:
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
-        from .utils.env_config import get_hf_token
 
-        # Get Hugging Face token from .env or environment variable
-        hf_token = get_hf_token()
+        hf_token = os.environ.get("HF_TOKEN")
 
-        device = "cpu"  # ✅ Run on CPU
-        model_path = "/var/www/dots_ocr/dots_ocr/local_model"  # ✅ Local model folder
-
+        model_path = "/var/www/dots_ocr/dots_ocr/local_model"
         print("🔹 Loading model from local path:", model_path)
 
-        # Load model
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map={"": "cpu"},
+            torch_dtype=torch.float32,  # ✅ Force full float32
+            device_map={"": "cpu"}
         )
 
-        # Load processor
+        # ✅ Ensure every layer in model uses float32
+        self.model = self.model.to(torch.float32)
+
         self.processor = AutoProcessor.from_pretrained(
             model_path,
             trust_remote_code=True,
-            use_fast=True,
+            use_fast=True
         )
-        # self.model = AutoModelForCausalLM.from_pretrained(
-        #     "rednote-hilab/dots.ocr",
-        #     token=hf_token,
-        #     torch_dtype=torch.float32,
-        #     device_map={"": "cpu"},
-        #     trust_remote_code=True
-        # )
-        # self.processor = AutoProcessor.from_pretrained(
-        #     "rednote-hilab/dots.ocr",
-        #     token=hf_token,
-        #     trust_remote_code=True,
-        #     use_fast=True
-        # )
-       
-        self.process_vision_info = process_vision_info
 
-        print("✅ Model loaded successfully on CPU.")
+        self.process_vision_info = process_vision_info
+        print("✅ Model loaded successfully on CPU (float32 enforced).")
 
     # def _inference_with_hf(self, image, prompt):
     #     import torch
