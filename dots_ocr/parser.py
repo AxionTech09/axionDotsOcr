@@ -122,6 +122,7 @@ class DotsOCRParser:
     #     return response
 
     def _inference_with_hf(self, image, prompt):
+        import torch
         messages = [
             {
                 "role": "user",
