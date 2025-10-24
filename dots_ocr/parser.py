@@ -54,16 +54,29 @@ class DotsOCRParser:
         print("🔹 Loading model from:", self.model_path)
         device = "cpu"  # ✅ CPU-only
 
+        # self.model = AutoModelForCausalLM.from_pretrained(
+        #     "rednote-hilab/dots.ocr",
+        #     token=hf_token,
+        #     torch_dtype=torch.float32,
+        #     device_map={"": "cpu"},
+        #     trust_remote_code=True
+        # )
+        # self.processor = AutoProcessor.from_pretrained(
+        #     "rednote-hilab/dots.ocr",
+        #     token=hf_token,
+        #     trust_remote_code=True,
+        #     use_fast=True
+        # )
+        model_path = os.path.join(os.path.dirname(__file__), "local_model")
+
         self.model = AutoModelForCausalLM.from_pretrained(
-            "rednote-hilab/dots.ocr",
-            token=hf_token,
+            model_path,
             torch_dtype=torch.float32,
             device_map={"": "cpu"},
             trust_remote_code=True
         )
         self.processor = AutoProcessor.from_pretrained(
-            "rednote-hilab/dots.ocr",
-            token=hf_token,
+            model_path,
             trust_remote_code=True,
             use_fast=True
         )
