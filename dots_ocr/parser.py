@@ -52,16 +52,31 @@ class DotsOCRParser:
         model_path = "/var/www/dots_ocr/dots_ocr/local_model"
         print("🔹 Loading model from local path:", model_path)
 
+        # ✅ Load model fully in float32
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float32,  # ✅ Force full float32
+            torch_dtype=torch.float32,
             device_map={"": "cpu"}
         )
 
-        # ✅ Ensure every layer in model uses float32
-        self.model = self.model.to(torch.float32)
+        # ✅ Convert every single submodule and tensor to float32
+        for name, module in self.model.named_modules():
+            try:
+                module.float()
+            except Exception:
+                pass
 
+        # ✅ Convert all parameters & buffers manually (in case of leftover BF16)
+        for param in self.model.parameters():
+            if param.dtype != torch.float32:
+                param.data = param.data.float()
+
+        for buffer_name, buffer in self.model.named_buffers():
+            if buffer.dtype != torch.float32:
+                buffer.data = buffer.data.float()
+
+        self.model = self.model.to("cpu")
         self.processor = AutoProcessor.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -69,7 +84,7 @@ class DotsOCRParser:
         )
 
         self.process_vision_info = process_vision_info
-        print("✅ Model loaded successfully on CPU (float32 enforced).")
+        print("✅ Model fully converted to float32 and loaded successfully on CPU.")
 
     # def _inference_with_hf(self, image, prompt):
     #     import torch
@@ -88,7 +103,7 @@ class DotsOCRParser:
     #         text=[text],
     #         images=image_inputs,
     #         videos=video_inputs,
-    #         padding=True,
+    #         padding=True,             
     #         return_tensors="pt",
     #     )
     #     inputs = inputs.to("cpu")
