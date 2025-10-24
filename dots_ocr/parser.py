@@ -17,14 +17,13 @@ class DotsOCRParser:
     CPU-only version of DotsOCR parser.
     Runs on Hugging Face transformer backend (no vLLM server required).
     """
-
     def __init__(self,
                  dpi=200,
                  output_dir="./output",
                  min_pixels=None,
                  max_pixels=None,
                  use_hf=True,
-                 model_path="rednote-hilab/dots.ocr"):
+                 model_path="/var/www/dots_ocr/dots_ocr/local_model"):
         self.dpi = dpi
         self.output_dir = output_dir
         self.min_pixels = min_pixels
@@ -43,41 +42,29 @@ class DotsOCRParser:
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
 
-        model_path = "/var/www/dots_ocr/dots_ocr/local_model"
-        print("🔹 Loading model from local path:", model_path)
+        print("🔹 Loading model from local path:", self.model_path)
 
-        # ✅ Load model fully in float32
+        # ✅ Force all ops to run in float32 (avoid bfloat16 issues)
+        torch.set_default_dtype(torch.float32)
+
+        # ✅ Load model fully on CPU in float32
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_path,
+            self.model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map={"": "cpu"}
+            torch_dtype=torch.float32,  # ensure float32 precision
+            device_map="cpu"            # load on CPU
         )
 
-        # ✅ Convert all submodules, params, and buffers to float32
-        for module in self.model.modules():
-            try:
-                module.float()
-            except Exception:
-                pass
+        # ✅ Ensure model tensors are float32 (some submodules may still be bf16)
+        self.model = self.model.to(torch.float32)
 
-        for param in self.model.parameters():
-            if param.dtype != torch.float32:
-                param.data = param.data.float()
-
-        for _, buffer in self.model.named_buffers():
-            if buffer.dtype != torch.float32:
-                buffer.data = buffer.data.float()
-
-        self.model = self.model.to("cpu")
+        # ✅ Load processor as usual
         self.processor = AutoProcessor.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            use_fast=True
+            self.model_path,
+            trust_remote_code=True
         )
-        self.process_vision_info = process_vision_info
 
-        print("✅ Model fully converted to float32 and loaded successfully on CPU.")
+        print("✅ Model successfully loaded in float32 (CPU mode)")
 
     def _inference_with_hf(self, image, prompt):
         import torch
