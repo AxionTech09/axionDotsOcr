@@ -43,7 +43,7 @@ class DotsOCRParser:
 
     def _load_hf_model(self):
         import os
-        os.environ["HF_TOKEN"] = "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"
+        hf_token = os.environ.get("HF_TOKEN")
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
         from qwen_vl_utils import process_vision_info
@@ -53,14 +53,14 @@ class DotsOCRParser:
 
         self.model = AutoModelForCausalLM.from_pretrained(
             "rednote-hilab/dots-ocr-base",
-            token=os.environ.get("HF_TOKEN"),
+            token=hf_token,
             torch_dtype=torch.float32,
             device_map={"": "cpu"},
             trust_remote_code=True
         )
         self.processor = AutoProcessor.from_pretrained(
             "rednote-hilab/dots-ocr-base",
-            token=os.environ.get("HF_TOKEN"),
+            token=hf_token,
             trust_remote_code=True,
             use_fast=True
         )
